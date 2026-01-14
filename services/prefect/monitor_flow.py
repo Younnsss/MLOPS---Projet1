@@ -15,6 +15,8 @@ from evidently.metrics import ValueDrift
 from evidently import Dataset
 from evidently import DataDefinition
 
+from train_and_compare_flow import train_and_compare_flow
+
 
 # ----------------------------
 # Configuration
@@ -223,16 +225,18 @@ def run_evidently(reference_df: pd.DataFrame, current_df: pd.DataFrame, as_of_re
 
 
 @task
-def decide_action(as_of_ref: str, as_of_cur: str, drift_share: float, target_drift: float, threshold: float = 0.3) -> str:
+def decide_action(
+    as_of_ref: str,
+    as_of_cur: str,
+    drift_share: float,
+    target_drift: float,
+    threshold: float = 0.02,
+) -> str:
+    # target_drift est calculé pour info (on ne l’utilise pas comme trigger ici)
     if drift_share >= threshold:
-        return (
-            f"RETRAINING_TRIGGERED (SIMULÉ) drift_share={drift_share:.2f} >= {threshold:.2f} "
-            f"(target_drift={target_drift if target_drift == target_drift else 'NaN'})"
-        )
-    return (
-        f"NO_ACTION drift_share={drift_share:.2f} < {threshold:.2f} "
-        f"(target_drift={target_drift if target_drift == target_drift else 'NaN'})"
-    )
+        decision = train_and_compare_flow(as_of=as_of_cur)
+        return f"RETRAINING_TRIGGERED drift_share={drift_share:.2f} >= {threshold:.2f} -> {decision}"
+    return f"NO_ACTION drift_share={drift_share:.2f} < {threshold:.2f}"
 
 
 # ----------------------------
@@ -249,7 +253,7 @@ def monitor_month_flow(
 
     tdrift = compute_target_drift(ref_df, cur_df)
     res = run_evidently(ref_df, cur_df, as_of_ref, as_of_cur)
-    msg = decide_action(as_of_ref, as_of_cur, res["drift_share"], tdrift, threshold)
+    msg = decide_action(as_of_ref, as_of_cur, res["drift_share"], tdrift, 0.0)
 
     print(
         f"[Evidently] report_html={res['html']} report_json={res['json']} "
