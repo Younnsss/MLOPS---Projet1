@@ -75,24 +75,24 @@ l’API charge le modèle MLflow au démarrage et le garde en mémoire.
 Il faut redémarrer le service pour recharger la nouvelle version Production après une promotion dans le registry.
 
 Exercice 6 :
-![alt text](image-38.png)
 
-On démarre Docker Compose dans la CI pour valider l’intégration multi-services (DB/Feast/MLflow/API) et vérifier que l’API démarre correctement et répond au healthcheck, ce que des tests unitaires seuls ne couvrent pas.
+![alt text](image-6.png)
+
+C'est pour valider l’intégration multi-services et vérifier que l’API démarre correctement qu'on démarre Docker Compose dans la CI.
 
 ## Synthèse – Monitoring, réentraînement et CI/CD
 
-Dans ce projet, le drift des données est mesuré à l’aide d’Evidently en comparant une période de référence à une période courante. Le principal indicateur utilisé est le drift_share, qui représente la proportion de features présentant un drift statistiquement significatif. Un seuil de déclenchement est fixé à 0.02 afin d’automatiser la décision de réentraînement. Dans un contexte réel, ce seuil serait généralement plus élevé afin d’éviter des réentraînements trop fréquents dus au bruit ou à des variations normales des données.
+Dans ce projet, le suivi du drift des données s’appuie sur Evidently, qui compare une période de référence à une période courante. L’indicateur principal, `drift_share`, mesure la proportion de features présentant un drift statistiquement significatif. Un seuil de 0.02 déclenche automatiquement le réentraînement, bien qu’en production ce seuil serait souvent relevé pour éviter des réentraînements inutiles dus au bruit ou à des fluctuations normales.
 
-Lorsque le drift dépasse le seuil, le flow train_and_compare_flow est déclenché. Ce flow construit un dataset cohérent à une date as_of, entraîne un modèle candidat, et évalue ses performances sur un jeu de validation via la métrique val_auc. En parallèle, le modèle actuellement en Production est évalué sur exactement le même split de données. La décision de promotion repose sur une règle simple et testée unitairement : le modèle candidat est promu uniquement si son val_auc dépasse celui du modèle en Production d’au moins un delta. Ce delta permet d’éviter des promotions dues à des gains marginaux ou aléatoires.
+Lorsque le drift dépasse ce seuil, le flow `train_and_compare_flow` est lancé. Il construit un dataset cohérent à une date donnée (`as_of`), entraîne un modèle candidat, puis évalue ses performances sur un jeu de validation via la métrique `val_auc`. Le modèle en Production est évalué sur le même split. La promotion repose sur une règle claire et testée : le modèle candidat n’est promu que si son `val_auc` dépasse celui du modèle en Production d’au moins un delta, afin d’éviter des promotions pour des gains marginaux ou aléatoires.
 
-Les responsabilités sont clairement séparées entre les outils :
+Les responsabilités sont bien réparties entre les outils :
 
-Prefect orchestre les workflows métier (monitoring, entraînement, comparaison, promotion) et gère la logique MLOps dynamique.
+- **Prefect** orchestre les workflows MLOps (monitoring, entraînement, comparaison, promotion) et gère la logique métier.
+- **GitHub Actions** assure la CI : exécution rapide des tests unitaires et vérification du démarrage de la stack Docker via un healthcheck. Aucun entraînement complet n’est effectué dans ce contexte.
 
-GitHub Actions assure la CI : exécution des tests unitaires rapides et vérification que la stack Docker démarre correctement via un healthcheck. Aucun entraînement complet n’y est exécuté.
+## Limites et axes d’amélioration
 
-## Limites et améliorations
-
-La CI ne doit pas entraîner le modèle complet, car l’entraînement est coûteux, lent et non déterministe, ce qui rendrait les pipelines instables et difficiles à maintenir.
-Plusieurs tests manquent encore, notamment des tests d’intégration fonctionnels sur les flows Prefect, des tests de non-régression sur les métriques, et des tests de robustesse sur les données en entrée.
-Enfin, en production réelle, une approbation humaine est souvent nécessaire avant toute promotion : gouvernance ML, contraintes réglementaires, validation métier et analyse d’impact sont essentielles pour éviter des déploiements automatiques risqués.
+La CI ne doit pas inclure l’entraînement complet du modèle, car ce processus est coûteux, lent et non déterministe, ce qui nuirait à la stabilité et à la maintenabilité des pipelines.
+Des tests complémentaires sont nécessaires, notamment des tests d’intégration sur les flows Prefect, des tests de non-régression sur les métriques, et des tests de robustesse sur les données en entrée.
+Enfin, en environnement de production, une validation humaine reste souvent indispensable avant toute promotion de modèle : gouvernance ML, conformité réglementaire, validation métier et analyse d’impact sont essentielles pour sécuriser les déploiements.
